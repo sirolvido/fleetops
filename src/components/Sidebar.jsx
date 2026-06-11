@@ -3,7 +3,7 @@ import { Truck, Users, MapPin, Package, LayoutDashboard, Settings, LogOut } from
 const navItems = [
   { id: 'dashboard', label: 'Dashboard',   icon: LayoutDashboard },
   { id: 'drivers',   label: 'Conductores', icon: Users },
-  { id: 'trucks',    label: 'Camiones',    icon: Truck },
+  { id: 'trucks',    label: 'Vehículos',    icon: Truck },
   { id: 'routes',    label: 'Rutas',       icon: MapPin },
   { id: 'cargo',     label: 'Cargas',      icon: Package },
 ]
