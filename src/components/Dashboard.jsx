@@ -1,6 +1,6 @@
 import { Users, Truck, MapPin, Package, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { metrics, weeklyData, monthlyData } from '../data/mockData'
+import { weeklyData, monthlyData } from '../data/mockData'
 import { useApp } from '../context/AppContext'
 
 const StatCard = ({ title, value, subtitle, icon: Icon, color }) => (
@@ -19,6 +19,7 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color }) => (
 
 export default function Dashboard() {
   const { routes, drivers } = useApp()
+  const { kpis } = useApp()
   const activeRoutes = routes.filter(r => r.status === 'in-progress')
   const availableDrivers = drivers.filter(d => d.status === 'available')
 
@@ -33,10 +34,10 @@ export default function Dashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard title="Conductores disponibles" value={`${metrics.availableDrivers}/${metrics.totalDrivers}`} subtitle="↑ 2 desde ayer" icon={Users} color="bg-blue-500" />
-        <StatCard title="Camiones disponibles" value={`${metrics.availableTrucks}/${metrics.totalTrucks}`} subtitle="1 en mantenimiento" icon={Truck} color="bg-green-500" />
-        <StatCard title="Rutas activas" value={metrics.activeRoutes} subtitle={`${metrics.pendingRoutes} pendientes`} icon={MapPin} color="bg-orange-500" />
-        <StatCard title="Entregas este mes" value={metrics.completedRoutesThisMonth} subtitle="↑ 94% a tiempo" icon={CheckCircle} color="bg-purple-500" />
+        <StatCard title="Conductores disponibles" value={`${kpis.availableDrivers}/${kpis.totalDrivers}`} subtitle="↑ 2 desde ayer" icon={Users} color="bg-blue-500" />
+        <StatCard title="Camiones disponibles" value={`${kpis.availableTrucks}/${kpis.totalTrucks}`} subtitle="1 en mantenimiento" icon={Truck} color="bg-green-500" />
+        <StatCard title="Rutas activas" value={kpis.activeRoutes} subtitle={`${kpis.pendingRoutes} pendientes`} icon={MapPin} color="bg-orange-500" />
+        <StatCard title="Entregas este mes" value={kpis.completedRoutesThisMonth} subtitle="↑ 94% a tiempo" icon={CheckCircle} color="bg-purple-500" />
       </div>
 
       {/* KPIs secundarios */}
@@ -46,9 +47,9 @@ export default function Dashboard() {
             <TrendingUp size={16} className="text-green-500" />
             <span className="text-sm font-medium text-gray-600">Tasa de puntualidad</span>
           </div>
-          <div className="text-3xl font-bold text-gray-800">{metrics.onTimeDeliveryRate}%</div>
+          <div className="text-3xl font-bold text-gray-800">{kpis.onTimeDeliveryRate}%</div>
           <div className="w-full bg-gray-100 rounded-full h-2 mt-3">
-            <div className="bg-green-500 h-2 rounded-full" style={{ width: `${metrics.onTimeDeliveryRate}%` }}></div>
+            <div className="bg-green-500 h-2 rounded-full" style={{ width: `${kpis.onTimeDeliveryRate}%` }}></div>
           </div>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -56,7 +57,7 @@ export default function Dashboard() {
             <Package size={16} className="text-blue-500" />
             <span className="text-sm font-medium text-gray-600">Carga este mes</span>
           </div>
-          <div className="text-3xl font-bold text-gray-800">{(metrics.totalCargoThisMonth / 1000).toFixed(0)}T</div>
+          <div className="text-3xl font-bold text-gray-800">{(kpis.totalCargoThisMonth / 1000).toFixed(0)}T</div>
           <div className="text-xs text-gray-400 mt-1">245.000 kg transportados</div>
         </div>
         <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -64,9 +65,9 @@ export default function Dashboard() {
             <AlertCircle size={16} className="text-orange-500" />
             <span className="text-sm font-medium text-gray-600">Eficiencia flota</span>
           </div>
-          <div className="text-3xl font-bold text-gray-800">{metrics.fuelEfficiency}%</div>
+          <div className="text-3xl font-bold text-gray-800">{kpis.fuelEfficiency}%</div>
           <div className="w-full bg-gray-100 rounded-full h-2 mt-3">
-            <div className="bg-orange-500 h-2 rounded-full" style={{ width: `${metrics.fuelEfficiency}%` }}></div>
+            <div className="bg-orange-500 h-2 rounded-full" style={{ width: `${kpis.fuelEfficiency}%` }}></div>
           </div>
         </div>
       </div>

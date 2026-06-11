@@ -11,11 +11,13 @@ const statusConfig = {
 
 const emptyForm = {
   origin: 'Madrid', destination: 'Barcelona',
-  driverId: '', truckId: '', cargoId: '', departure: '', status: 'pending',
+  driverId: '', truckId: '', cargoId: '',
+  departure: '', status: 'pending',
+  duration: '', actualDuration: '',
 }
 
 export default function Routes() {
-  const { routes, setRoutes, drivers, trucks, cargo, cities } = useApp()
+  const { routes, setRoutes, drivers, trucks, cargo, cities, calcDistance, calcEstimatedDuration, formatDuration } = useApp()
   const [selected, setSelected] = useState(null)
   const [MapComponents, setMapComponents] = useState(null)
   const [showModal, setShowModal] = useState(false)
@@ -32,6 +34,19 @@ export default function Routes() {
       import('leaflet/dist/leaflet.css'),
     ]).then(([rl]) => setMapComponents(rl))
   }, [])
+
+  // Calcular duración automáticamente al cambiar origen o destino
+  useEffect(() => {
+    if (form.origin && form.destination && form.origin !== form.destination) {
+      const originCoords = cities[form.origin]
+      const destCoords = cities[form.destination]
+      if (originCoords && destCoords) {
+        const dist = calcDistance(originCoords, destCoords)
+        const estimated = calcEstimatedDuration(dist)
+        setForm(prev => ({ ...prev, duration: estimated }))
+      }
+    }
+  }, [form.origin, form.destination])
 
   const getDriver = (id) => drivers.find(d => d.id === id)
   const getTruck = (id) => trucks.find(t => t.id === id)
@@ -51,6 +66,8 @@ export default function Routes() {
 
     const originCoords = cities[form.origin] || [40.4168, -3.7038]
     const destinationCoords = cities[form.destination] || [41.3851, 2.1734]
+    const distance = calcDistance(originCoords, destinationCoords)
+    const duration = form.duration ? parseFloat(form.duration) : calcEstimatedDuration(distance)
 
     if (editingId !== null) {
       setRoutes(prev => prev.map(r => r.id === editingId ? {
@@ -60,6 +77,9 @@ export default function Routes() {
         truck: form.truckId ? parseInt(form.truckId) : null,
         cargo: form.cargoId ? parseInt(form.cargoId) : null,
         departure: form.departure, status: form.status,
+        duration, estimatedTime: formatDuration(duration),
+        distance,
+        actualDuration: form.actualDuration ? parseFloat(form.actualDuration) : null,
       } : r))
     } else {
       setRoutes(prev => [...prev, {
@@ -68,8 +88,10 @@ export default function Routes() {
         driver: form.driverId ? parseInt(form.driverId) : null,
         truck: form.truckId ? parseInt(form.truckId) : null,
         cargo: form.cargoId ? parseInt(form.cargoId) : null,
-        status: form.status, distance: Math.floor(Math.random() * 600 + 200),
-        estimatedTime: '5h 00min', departure: form.departure, arrival: '', progress: 0,
+        status: form.status, distance,
+        estimatedTime: formatDuration(duration),
+        duration, departure: form.departure, arrival: '', progress: 0,
+        actualDuration: null,
       }])
     }
     handleClose()
@@ -77,7 +99,13 @@ export default function Routes() {
 
   const handleEdit = (route) => {
     setEditingId(route.id)
-    setForm({ origin: route.origin, destination: route.destination, driverId: route.driver || '', truckId: route.truck || '', cargoId: route.cargo || '', departure: route.departure, status: route.status })
+    setForm({
+      origin: route.origin, destination: route.destination,
+      driverId: route.driver || '', truckId: route.truck || '',
+      cargoId: route.cargo || '', departure: route.departure,
+      status: route.status, duration: route.duration || '',
+      actualDuration: route.actualDuration || '',
+    })
     setShowModal(true)
   }
 
@@ -102,6 +130,7 @@ export default function Routes() {
             const driver = getDriver(route.driver)
             const truck = getTruck(route.truck)
             const isSelected = selected?.id === route.id
+            const isLate = route.actualDuration && route.duration && route.actualDuration > route.duration * 1.1
             return (
               <div key={route.id} onClick={() => setSelected(route)} className={`bg-white rounded-xl p-4 shadow-sm border cursor-pointer transition-all hover:shadow-md ${isSelected ? 'border-blue-500 ring-1 ring-blue-500' : 'border-gray-100'}`}>
                 <div className="flex items-center justify-between mb-3">
@@ -111,17 +140,26 @@ export default function Routes() {
                   </div>
                   <div className="flex items-center gap-2">
                     <span className={`text-xs font-medium px-2 py-1 rounded-full ${status.color}`}>{status.label}</span>
+                    {route.status === 'completed' && route.actualDuration && (
+                      <span className={`text-xs font-medium px-2 py-1 rounded-full ${isLate ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'}`}>
+                        {isLate ? '⚠ Retraso' : '✓ A tiempo'}
+                      </span>
+                    )}
                     <button onClick={e => { e.stopPropagation(); handleEdit(route) }} className="text-gray-400 hover:text-blue-600 transition-colors"><Pencil size={14} /></button>
                     <button onClick={e => { e.stopPropagation(); setConfirmDelete(route) }} className="text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={14} /></button>
                   </div>
                 </div>
-                <div className="flex items-center gap-4 text-xs text-gray-500 mb-3">
-                  <span className="flex items-center gap-1"><Clock size={11} /> {route.estimatedTime}</span>
+                <div className="flex items-center gap-4 text-xs text-gray-500 mb-2">
+                  <span className="flex items-center gap-1"><Clock size={11} /> Est: {route.estimatedTime}</span>
                   <span>{route.distance} km</span>
-                  <span>Salida: {route.departure?.split('T')[1] || route.departure?.split(' ')[1] || route.departure}</span>
+                  {route.actualDuration && (
+                    <span className={`font-medium ${isLate ? 'text-red-500' : 'text-green-600'}`}>
+                      Real: {formatDuration(route.actualDuration)}
+                    </span>
+                  )}
                 </div>
                 {route.status === 'in-progress' && (
-                  <div className="mb-3">
+                  <div className="mb-2">
                     <div className="flex justify-between text-xs text-gray-400 mb-1"><span>Progreso</span><span>{route.progress}%</span></div>
                     <div className="w-full bg-gray-100 rounded-full h-1.5">
                       <div className="bg-blue-500 h-1.5 rounded-full" style={{ width: `${route.progress}%` }}></div>
@@ -185,11 +223,37 @@ export default function Routes() {
                   {errors.destination && <p className="text-xs text-red-500 mt-1">{errors.destination}</p>}
                 </div>
               </div>
+
+              {form.origin && form.destination && form.origin !== form.destination && cities[form.origin] && cities[form.destination] && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700 flex items-center gap-2">
+                  <MapPin size={12} />
+                  <span>
+                    Distancia calculada: <strong>{calcDistance(cities[form.origin], cities[form.destination])} km</strong> · 
+                    Duración estimada: <strong>{formatDuration(calcEstimatedDuration(calcDistance(cities[form.origin], cities[form.destination])))}</strong>
+                  </span>
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Fecha y hora de salida *</label>
                 <input type="datetime-local" value={form.departure} onChange={e => setForm({...form, departure: e.target.value})} className={`w-full text-sm border rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${errors.departure ? 'border-red-400' : 'border-gray-200'}`} />
                 {errors.departure && <p className="text-xs text-red-500 mt-1">{errors.departure}</p>}
               </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Duración estimada (h)</label>
+                  <input type="number" value={form.duration} onChange={e => setForm({...form, duration: e.target.value})} placeholder="Auto" min="0" step="0.25" className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 mb-1 block">Duración real (h)</label>
+                  <input type="number" value={form.actualDuration} onChange={e => setForm({...form, actualDuration: e.target.value})} placeholder="Al completar" min="0" step="0.25"
+                    className={`w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500 ${form.status !== 'completed' ? 'opacity-50' : ''}`}
+                    disabled={form.status !== 'completed'}
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Estado</label>
                 <select value={form.status} onChange={e => setForm({...form, status: e.target.value})} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
@@ -197,7 +261,9 @@ export default function Routes() {
                   <option value="in-progress">En curso</option>
                   <option value="completed">Completada</option>
                 </select>
+                {form.status === 'completed' && <p className="text-xs text-blue-600 mt-1">Introduce la duración real para calcular la puntualidad</p>}
               </div>
+
               <div>
                 <label className="text-xs font-medium text-gray-600 mb-1 block">Conductor</label>
                 <select value={form.driverId} onChange={e => setForm({...form, driverId: e.target.value})} className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500">
