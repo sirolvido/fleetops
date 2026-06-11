@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { MapPin, Clock, Truck, User, X, Pencil, Trash2 } from 'lucide-react'
+import { MapPin, Clock, Truck, User, X, Pencil, Trash2, Zap, CheckCircle, XCircle, Loader } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import ConfirmModal from './ConfirmModal'
 
@@ -16,6 +16,66 @@ const emptyForm = {
   duration: '', actualDuration: '',
 }
 
+// Lógica de asignación automática basada en reglas
+function autoAssign(pendingRoutes, availableDrivers, availableTrucks, cargo) {
+  const assignments = []
+  const usedDrivers = new Set()
+  const usedTrucks = new Set()
+
+  for (const route of pendingRoutes) {
+    // Encontrar la carga de la ruta
+    const routeCargo = cargo.find(c => c.id === route.cargo)
+    const cargoWeight = routeCargo?.weight || 0
+
+    // Filtrar camiones disponibles con capacidad suficiente
+    const suitableTrucks = availableTrucks
+      .filter(t => !usedTrucks.has(t.id) && t.capacity >= cargoWeight)
+      .sort((a, b) => a.capacity - b.capacity) // El más ajustado primero
+
+    // Filtrar conductores disponibles no usados
+    const suitableDrivers = availableDrivers
+      .filter(d => !usedDrivers.has(d.id))
+      .sort((a, b) => {
+        // Priorizar C+E para tráilers, experiencia como desempate
+        const truckType = suitableTrucks[0]?.type || ''
+        const needsCE = truckType === 'Tráiler'
+        if (needsCE) {
+          if (a.license === 'C+E' && b.license !== 'C+E') return -1
+          if (b.license === 'C+E' && a.license !== 'C+E') return 1
+        }
+        return b.experience - a.experience
+      })
+
+    if (suitableDrivers.length === 0 || suitableTrucks.length === 0) continue
+
+    const bestDriver = suitableDrivers[0]
+    const bestTruck = suitableTrucks[0]
+
+    usedDrivers.add(bestDriver.id)
+    usedTrucks.add(bestTruck.id)
+
+    // Generar razón explicativa
+    const reasons = []
+    if (bestDriver.license === 'C+E') reasons.push(`licencia C+E apta para ${bestTruck.type}`)
+    reasons.push(`${bestDriver.experience} años de experiencia`)
+    if (cargoWeight > 0) reasons.push(`capacidad ${(bestTruck.capacity/1000).toFixed(0)}T cubre los ${(cargoWeight/1000).toFixed(1)}T de carga`)
+    if (bestDriver.hoursThisWeek < 40) reasons.push(`${bestDriver.hoursThisWeek}h acumuladas esta semana`)
+
+    assignments.push({
+      routeId: route.id,
+      routeName: `${route.origin} → ${route.destination}`,
+      driverId: bestDriver.id,
+      driverName: bestDriver.name,
+      truckId: bestTruck.id,
+      truckPlate: bestTruck.plate,
+      truckType: bestTruck.type,
+      reason: reasons.join(', ') + '.',
+    })
+  }
+
+  return assignments
+}
+
 export default function Routes() {
   const { routes, setRoutes, drivers, trucks, cargo, cities, calcDistance, calcEstimatedDuration, formatDuration } = useApp()
   const [selected, setSelected] = useState(null)
@@ -25,6 +85,9 @@ export default function Routes() {
   const [form, setForm] = useState(emptyForm)
   const [errors, setErrors] = useState({})
   const [confirmDelete, setConfirmDelete] = useState(null)
+  const [showAI, setShowAI] = useState(false)
+  const [aiSuggestions, setAiSuggestions] = useState([])
+  const [aiLoading, setAiLoading] = useState(false)
 
   const cityNames = Object.keys(cities)
 
@@ -35,7 +98,6 @@ export default function Routes() {
     ]).then(([rl]) => setMapComponents(rl))
   }, [])
 
-  // Calcular duración automáticamente al cambiar origen o destino
   useEffect(() => {
     if (form.origin && form.destination && form.origin !== form.destination) {
       const originCoords = cities[form.origin]
@@ -77,8 +139,7 @@ export default function Routes() {
         truck: form.truckId ? parseInt(form.truckId) : null,
         cargo: form.cargoId ? parseInt(form.cargoId) : null,
         departure: form.departure, status: form.status,
-        duration, estimatedTime: formatDuration(duration),
-        distance,
+        duration, estimatedTime: formatDuration(duration), distance,
         actualDuration: form.actualDuration ? parseFloat(form.actualDuration) : null,
       } : r))
     } else {
@@ -88,10 +149,8 @@ export default function Routes() {
         driver: form.driverId ? parseInt(form.driverId) : null,
         truck: form.truckId ? parseInt(form.truckId) : null,
         cargo: form.cargoId ? parseInt(form.cargoId) : null,
-        status: form.status, distance,
-        estimatedTime: formatDuration(duration),
-        duration, departure: form.departure, arrival: '', progress: 0,
-        actualDuration: null,
+        status: form.status, distance, estimatedTime: formatDuration(duration),
+        duration, departure: form.departure, arrival: '', progress: 0, actualDuration: null,
       }])
     }
     handleClose()
@@ -111,6 +170,39 @@ export default function Routes() {
 
   const handleClose = () => { setShowModal(false); setEditingId(null); setForm(emptyForm); setErrors({}) }
 
+  const handleAutoAssign = () => {
+    setShowAI(true)
+    setAiLoading(true)
+    setAiSuggestions([])
+
+    const pendingRoutes = routes.filter(r => r.status === 'pending' && (!r.driver || !r.truck))
+    const availableDrivers = drivers.filter(d => d.status === 'available')
+    const availableTrucks = trucks.filter(t => t.status === 'available')
+
+    setTimeout(() => {
+      if (pendingRoutes.length === 0) {
+        setAiSuggestions([{ type: 'info', message: 'No hay rutas pendientes sin asignar.' }])
+      } else {
+        const suggestions = autoAssign(pendingRoutes, availableDrivers, availableTrucks, cargo)
+        if (suggestions.length === 0) {
+          setAiSuggestions([{ type: 'info', message: 'No hay conductores o vehículos disponibles para asignar.' }])
+        } else {
+          setAiSuggestions(suggestions)
+        }
+      }
+      setAiLoading(false)
+    }, 1200) // Simula tiempo de procesamiento
+  }
+
+  const handleAcceptSuggestion = (suggestion) => {
+    setRoutes(prev => prev.map(r => r.id === suggestion.routeId ? {
+      ...r,
+      driver: suggestion.driverId,
+      truck: suggestion.truckId,
+    } : r))
+    setAiSuggestions(prev => prev.filter(s => s.routeId !== suggestion.routeId))
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -118,10 +210,75 @@ export default function Routes() {
           <h1 className="text-2xl font-bold text-gray-800">Rutas</h1>
           <p className="text-gray-500 text-sm mt-1">{routes.length} rutas registradas</p>
         </div>
-        <button onClick={() => { setEditingId(null); setShowModal(true) }} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all">
-          + Nueva ruta
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={handleAutoAssign}
+            className="flex items-center gap-2 bg-purple-600 hover:bg-purple-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all"
+          >
+            <Zap size={15} />
+            Asignación IA
+          </button>
+          <button onClick={() => { setEditingId(null); setShowModal(true) }} className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-all">
+            + Nueva ruta
+          </button>
+        </div>
       </div>
+
+      {/* Panel de asignación IA */}
+      {showAI && (
+        <div className="bg-white rounded-xl shadow-sm border border-purple-200 overflow-hidden">
+          <div className="flex items-center justify-between px-5 py-3 bg-purple-50 border-b border-purple-100">
+            <div className="flex items-center gap-2">
+              <Zap size={16} className="text-purple-600" />
+              <span className="text-sm font-semibold text-purple-800">Asignación automática por IA</span>
+            </div>
+            <button onClick={() => setShowAI(false)} className="text-purple-400 hover:text-purple-600"><X size={16} /></button>
+          </div>
+
+          <div className="p-5">
+            {aiLoading ? (
+              <div className="flex items-center gap-3 text-gray-500 text-sm py-4">
+                <Loader size={16} className="animate-spin text-purple-500" />
+                Analizando rutas, conductores y vehículos disponibles...
+              </div>
+            ) : aiSuggestions.length === 0 ? (
+              <div className="text-sm text-gray-500 py-2">No hay sugerencias disponibles.</div>
+            ) : aiSuggestions[0]?.type === 'info' ? (
+              <div className="text-sm text-gray-600 py-2">{aiSuggestions[0].message}</div>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-gray-500 mb-3">La IA ha analizado disponibilidad, licencias, experiencia y capacidad de carga para sugerir las asignaciones óptimas:</p>
+                {aiSuggestions.map((s, i) => (
+                  <div key={i} className="flex items-start gap-4 p-4 bg-gray-50 rounded-lg border border-gray-100">
+                    <div className="flex-1">
+                      <div className="font-semibold text-gray-800 text-sm mb-2">{s.routeName}</div>
+                      <div className="text-xs text-gray-500 space-y-1">
+                        <div className="flex items-center gap-1.5"><User size={11} className="text-blue-500" /> <span className="font-medium text-gray-700">{s.driverName}</span></div>
+                        <div className="flex items-center gap-1.5"><Truck size={11} className="text-blue-500" /> <span className="font-medium text-gray-700">{s.truckPlate}</span> <span className="text-gray-400">({s.truckType})</span></div>
+                        <div className="mt-1.5 text-gray-400 italic text-xs">✓ {s.reason}</div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 flex-shrink-0">
+                      <button
+                        onClick={() => handleAcceptSuggestion(s)}
+                        className="flex items-center gap-1 text-xs font-medium text-green-600 bg-green-50 hover:bg-green-100 px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        <CheckCircle size={13} /> Aceptar
+                      </button>
+                      <button
+                        onClick={() => setAiSuggestions(prev => prev.filter((_, idx) => idx !== i))}
+                        className="flex items-center gap-1 text-xs font-medium text-red-500 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition-all"
+                      >
+                        <XCircle size={13} /> Rechazar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-3">
@@ -153,9 +310,7 @@ export default function Routes() {
                   <span className="flex items-center gap-1"><Clock size={11} /> Est: {route.estimatedTime}</span>
                   <span>{route.distance} km</span>
                   {route.actualDuration && (
-                    <span className={`font-medium ${isLate ? 'text-red-500' : 'text-green-600'}`}>
-                      Real: {formatDuration(route.actualDuration)}
-                    </span>
+                    <span className={`font-medium ${isLate ? 'text-red-500' : 'text-green-600'}`}>Real: {formatDuration(route.actualDuration)}</span>
                   )}
                 </div>
                 {route.status === 'in-progress' && (
@@ -187,11 +342,11 @@ export default function Routes() {
                     weight={route.id === selected?.id ? 4 : 2} opacity={route.id === selected?.id ? 1 : 0.5}
                   />
                 ))}
-                {routes.map(route => (
-                  <>
-                    <Marker key={`o-${route.id}`} position={route.originCoords}><Popup>{route.origin}</Popup></Marker>
-                    <Marker key={`d-${route.id}`} position={route.destinationCoords}><Popup>{route.destination}</Popup></Marker>
-                  </>
+                {routes.map((route, idx) => (
+                  <div key={`markers-${route.id}-${idx}`}>
+                    <Marker position={route.originCoords}><Popup>{route.origin}</Popup></Marker>
+                    <Marker position={route.destinationCoords}><Popup>{route.destination}</Popup></Marker>
+                  </div>
                 ))}
               </MapContainer>
             )
@@ -227,10 +382,7 @@ export default function Routes() {
               {form.origin && form.destination && form.origin !== form.destination && cities[form.origin] && cities[form.destination] && (
                 <div className="bg-blue-50 border border-blue-200 rounded-lg px-4 py-2 text-xs text-blue-700 flex items-center gap-2">
                   <MapPin size={12} />
-                  <span>
-                    Distancia calculada: <strong>{calcDistance(cities[form.origin], cities[form.destination])} km</strong> · 
-                    Duración estimada: <strong>{formatDuration(calcEstimatedDuration(calcDistance(cities[form.origin], cities[form.destination])))}</strong>
-                  </span>
+                  <span>Distancia calculada: <strong>{calcDistance(cities[form.origin], cities[form.destination])} km</strong> · Duración estimada: <strong>{formatDuration(calcEstimatedDuration(calcDistance(cities[form.origin], cities[form.destination])))}</strong></span>
                 </div>
               )}
 
