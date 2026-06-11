@@ -7,6 +7,7 @@ import Routes from './components/Routes'
 import Cargo from './components/Cargo'
 import Chatbot from './components/Chatbot'
 import Settings from './components/Settings'
+import Header from './components/Header'
 
 function App() {
   const [activeSection, setActiveSection] = useState('dashboard')
@@ -29,6 +30,7 @@ function App() {
       <Sidebar activeSection={activeSection} setActiveSection={setActiveSection} />
 
       <main className="flex-1 overflow-y-auto">
+        <Header activeSection={activeSection} />
         <div className="p-6">
           {renderSection()}
         </div>
