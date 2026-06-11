@@ -34,20 +34,22 @@ function App() {
 
       {/* Botón chatbot */}
       <button
-        onClick={() => setChatbotOpen(!chatbotOpen)}
+        onClick={() => setChatbotOpen(true)}
         className="fixed bottom-6 right-6 w-14 h-14 bg-blue-600 hover:bg-blue-700 text-white rounded-full shadow-lg flex items-center justify-center z-50 transition-all"
+        title="Abrir FleetBot"
       >
         <span className="text-2xl">🤖</span>
       </button>
 
-      {/* Panel chatbot */}
+      {/* Modal chatbot */}
       {chatbotOpen && (
-        <div className="fixed bottom-24 right-6 z-50">
-          <Chatbot onClose={() => setChatbotOpen(false)} />
+        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,0.5)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:50, padding:'24px'}}>
+          <div style={{width:'80vw', height:'85vh', maxWidth:'1200px'}}>
+            <Chatbot onClose={() => setChatbotOpen(false)} />
+          </div>
         </div>
       )}
     </div>
   )
 }
-
 export default App
