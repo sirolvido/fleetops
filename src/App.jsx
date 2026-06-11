@@ -6,6 +6,7 @@ import Trucks from './components/Trucks'
 import Routes from './components/Routes'
 import Cargo from './components/Cargo'
 import Chatbot from './components/Chatbot'
+import Settings from './components/Settings'
 
 function App() {
   const [activeSection, setActiveSection] = useState('dashboard')
@@ -19,6 +20,7 @@ function App() {
       case 'routes':    return <Routes />
       case 'cargo':     return <Cargo />
       default:          return <Dashboard />
+      case 'settings': return <Settings />
     }
   }
 

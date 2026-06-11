@@ -1,6 +1,7 @@
 import { Users, Truck, MapPin, Package, TrendingUp, Clock, CheckCircle, AlertCircle } from 'lucide-react'
 import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts'
-import { metrics, weeklyData, monthlyData, routes, drivers } from '../data/mockData'
+import { metrics, weeklyData, monthlyData } from '../data/mockData'
+import { useApp } from '../context/AppContext'
 
 const StatCard = ({ title, value, subtitle, icon: Icon, color }) => (
   <div className="bg-white rounded-xl p-5 shadow-sm border border-gray-100">
@@ -17,6 +18,7 @@ const StatCard = ({ title, value, subtitle, icon: Icon, color }) => (
 )
 
 export default function Dashboard() {
+  const { routes, drivers } = useApp()
   const activeRoutes = routes.filter(r => r.status === 'in-progress')
   const availableDrivers = drivers.filter(d => d.status === 'available')
 
